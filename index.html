@@ -197,7 +197,7 @@
     <div class="stage" id="stage" tabindex="0" aria-label="3D lock. Click a plate to select it; arrow keys move it.">
       <div class="solution" id="solution" hidden>
         <div class="sol-head"><strong id="solTitle">Solution</strong><button class="ghost sol-x" id="solClose" aria-label="Close solution">×</button></div>
-        <p class="sol-note">Arrows show which way to slide the <strong>plate</strong>, as in the game.</p>
+        <p class="sol-note">Arrows match the game and this tool's ◀ ▶ buttons.</p>
         <ol class="sol-steps" id="solSteps"></ol>
         <div class="sol-actions" id="solActions">
           <button class="primary" id="solNext">Do next step</button>
@@ -729,9 +729,9 @@ function renderSolution() {
       const doneHere = Math.min(Math.max(sol.done - g.from, 0), g.count);
       const cls = doneHere === g.count ? 'done' : sol.done >= g.from ? 'next' : '';
       const togo = cls === 'next' && doneHere > 0 ? ` <span class="togo">(${g.count - doneHere} to go)</span>` : '';
-      // In the game you slide the plate, and the pin moves the other way along it,
-      // so the instruction shows the plate direction: the opposite of the pin's.
-      const plateDir = -g.dir;
+      // Direction as you press it in the game (checked against the real minigame):
+      // it matches this tool's ◀ ▶ buttons.
+      const plateDir = g.dir;
       return `<li class="${cls}">Plate ${g.plate + 1} ${plateDir < 0 ? '← left' : 'right →'}${g.count > 1 ? ` <span class="times">×${g.count}</span>` : ''}${togo}</li>`;
     }).join('');
   acts.hidden = finished || total === 0;
