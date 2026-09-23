@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gothic Chest Lock</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English+SC&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<style>
+  /* Single dark look on purpose: the page lives in the game's torch-lit world. */
+  :root {
+    color-scheme: dark;
+    --soot: #0e0c0a;
+    --panel: #1a1714;
+    --panel-2: #231f1b;
+    --line: #3a332c;
+    --iron: #a7a9ad;
+    --text: #e8e1d6;
+    --muted: #a39887;
+    --brass: #c9a45c;
+    --brass-dim: #7a6334;
+    --ok: #8fb57a;
+    --bad: #d0654f;
+    --display: "IM Fell English SC", "Palatino Linotype", Palatino, Georgia, serif;
+    --body: "Alegreya Sans", "Segoe UI", system-ui, sans-serif;
+  }
+  [hidden] { display: none !important; }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--soot);
+    color: var(--text);
+    font: 15px/1.5 var(--body);
+    padding-inline: 16px;
+    padding-block: 20px 32px;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 18px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 20px; }
+  h1 { font: 400 clamp(26px, 4vw, 38px)/1.1 var(--display); margin: 0; letter-spacing: .02em; text-wrap: balance; }
+  h1 span { color: var(--brass); }
+  .sub { color: var(--muted); margin: 4px 0 0; max-width: 60ch; }
+  .status { display: flex; gap: 10px; align-items: center; font-variant-numeric: tabular-nums; }
+  .pill { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-weight: 500; background: var(--panel); }
+  .pill.locked { color: var(--brass); border-color: var(--brass-dim); }
+  .pill.open { color: var(--ok); border-color: var(--ok); }
+
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; align-items: start; }
+  @media (max-width: 920px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+  .stagecol { display: grid; gap: 10px; min-width: 0; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  }
+  .tgroup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tgroup .who { font-family: var(--display); font-size: 17px; color: var(--brass); }
+  .linkbtn { font-weight: 700; letter-spacing: .08em; font-size: 13px; padding: 6px 12px; }
+  .linkbtn.same[aria-pressed="true"] { background: #25361f; border-color: var(--ok); color: #cfe3c3; }
+  .linkbtn.opp[aria-pressed="true"] { background: #3d2219; border-color: var(--bad); color: #f0cfc6; }
+  .linkbtn.same:hover { border-color: var(--ok); }
+  .linkbtn.opp:hover { border-color: var(--bad); }
+  .modehint { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--muted); }
+  .modehint strong { color: var(--text); }
+  .stage.linking { cursor: crosshair; }
+  .stage {
+    position: relative; border-radius: 10px; overflow: hidden;
+    background: radial-gradient(ellipse at 40% 30%, #2a221a 0%, #120f0c 60%, #0a0908 100%);
+    border: 1px solid var(--line);
+    height: min(68vh, 620px); min-height: 360px;
+    touch-action: none; cursor: grab;
+  }
+  .stage.dragging { cursor: grabbing; }
+  .solvebtn { margin-left: auto; font-size: 15px; padding: 7px 22px; letter-spacing: .06em; }
+  .solution {
+    position: absolute; top: 12px; right: 12px; z-index: 2; width: min(220px, calc(100% - 24px));
+    max-height: calc(100% - 84px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px;
+    background: rgba(20,17,14,.94); border: 1px solid var(--brass-dim); border-radius: 10px; padding: 12px;
+  }
+  .sol-head { display: flex; justify-content: space-between; align-items: center; }
+  .sol-head strong { font: 400 18px/1.2 var(--display); color: var(--brass); }
+  .sol-x { padding: 0 8px; font-size: 18px; }
+  .sol-steps { margin: 0; padding-left: 26px; overflow: auto; font-variant-numeric: tabular-nums; }
+  .sol-steps li { padding: 1px 0; color: var(--text); font-size: 14px; }
+  .sol-steps li.done { color: var(--muted); text-decoration: line-through; }
+  .sol-steps li.next { color: var(--brass); font-weight: 700; }
+  .sol-msg { margin: 0; color: var(--muted); font-size: 14px; }
+  .sol-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stage canvas { display: block; width: 100%; height: 100%; }
+  .hud {
+    position: absolute; left: 12px; right: 12px; bottom: 12px;
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between;
+    pointer-events: none;
+  }
+  .hud > * { pointer-events: auto; }
+  .hint { color: var(--muted); font-size: 13px; background: rgba(14,12,10,.7); padding: 4px 10px; border-radius: 6px; }
+  .nudgebar { display: flex; gap: 6px; align-items: center; background: rgba(14,12,10,.8); padding: 6px; border-radius: 8px; border: 1px solid var(--line); }
+  .nudgebar .who { font-family: var(--display); font-size: 17px; padding: 0 8px; color: var(--brass); }
+
+  button, select {
+    font: inherit; color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  }
+  button:hover { border-color: var(--brass-dim); }
+  button:focus-visible, select:focus-visible, .stage:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+  button.primary { background: var(--brass); color: #1a140b; border-color: var(--brass); font-weight: 700; }
+  button.ghost { background: transparent; }
+  .arrow { width: 40px; font-size: 16px; line-height: 1; padding: 7px 0; }
+
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 14px; }
+  aside h2 { font: 400 20px/1.2 var(--display); margin: 0; letter-spacing: .03em; }
+  .row-inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+  .stepper { display: flex; align-items: center; gap: 6px; }
+  .stepper output { min-width: 2ch; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .note { font-size: 13px; color: var(--muted); border-left: 2px solid var(--brass-dim); padding-left: 10px; margin: 0; }
+
+  .plates { display: grid; gap: 8px; }
+  .plate { border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 8px; background: var(--panel-2); }
+  .plate.sel { border-color: var(--brass); }
+  .plate-head { display: flex; align-items: center; gap: 10px; }
+  .badge {
+    width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+    font-family: var(--display); font-size: 16px; background: #0f0d0b; border: 1px solid var(--iron); color: var(--iron);
+    cursor: pointer; flex: none;
+  }
+  .plate.sel .badge { border-color: var(--brass); color: var(--brass); }
+  .pips { display: flex; gap: 5px; flex: 1; justify-content: center; }
+  .pip { width: 11px; height: 11px; border-radius: 50%; background: #0b0a09; border: 1px solid #4a4239; }
+  .pip.mid { border-color: var(--brass-dim); }
+  .pip.on { background: var(--brass); border-color: var(--brass); }
+  .pip.on.mid { background: var(--ok); border-color: var(--ok); }
+  .plate-setup { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+  .plate-setup select { padding: 2px 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 4px 1px 9px; font-size: 13px; }
+  .chip.same { border-color: #4f6b45; }
+  .chip.opp { border-color: #7a4a3a; }
+  .chip button { border: 0; background: none; padding: 0 5px; color: var(--muted); }
+  .linkform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  .log { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--muted); max-height: 120px; overflow: auto; margin: 0; padding-left: 20px; }
+  .log li.blocked { color: var(--bad); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Gothic <span>Chest Lock</span></h1>
+      <p class="sub">Slide each plate until every brass pin sits in the middle hole. Drag to look around. Pick a plate with ↑ ↓ (or click it), then slide it with ← → or ◀ ▶.</p>
+    </div>
+    <div class="status">
+      <span class="pill" id="centered">0 / 4 centred</span>
+      <span class="pill" id="moves">0 moves</span>
+      <span class="pill locked" id="lockstate">Locked</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="stagecol">
+    <div class="toolbar" role="toolbar" aria-label="Lock setup">
+      <div class="tgroup">
+        <span class="label">Plates</span>
+        <div class="stepper">
+          <button class="ghost" id="fewer" aria-label="Fewer plates">−</button>
+          <output id="count">4</output>
+          <button class="ghost" id="more" aria-label="More plates">+</button>
+        </div>
+      </div>
+      <div class="tgroup">
+        <span class="label">Links from</span>
+        <span class="who" id="linkSrc">Plate 1</span>
+        <button class="linkbtn same" id="modeSame" aria-pressed="false">SAME</button>
+        <button class="linkbtn opp" id="modeOpp" aria-pressed="false">OPPOSITE</button>
+      </div>
+      <button class="primary solvebtn" id="solveBtn">Solve</button>
+      <p class="modehint" id="modehint"></p>
+    </div>
+    <div class="stage" id="stage" tabindex="0" aria-label="3D lock. Click a plate to select it; arrow keys move it.">
+      <div class="solution" id="solution" hidden>
+        <div class="sol-head"><strong id="solTitle">Solution</strong><button class="ghost sol-x" id="solClose" aria-label="Close solution">×</button></div>
+        <ol class="sol-steps" id="solSteps"></ol>
+        <div class="sol-actions" id="solActions">
+          <button class="primary" id="solNext">Do next step</button>
+          <button id="solAll">Play all</button>
+        </div>
+      </div>
+      <div class="hud">
+        <span class="hint" id="hint">Drag to orbit · scroll to zoom</span>
+        <div class="nudgebar" id="nudgebar" hidden>
+          <button class="arrow" id="hudLeft" aria-label="Move selected plate left">◀</button>
+          <span class="who" id="hudWho">Plate 1</span>
+          <button class="arrow" id="hudRight" aria-label="Move selected plate right">▶</button>
+        </div>
+      </div>
+    </div>
+    </div>
+
+    <aside>
+      <div class="row-inline">
+        <h2>Lock setup</h2>
+        <button class="primary" id="reset">Reset to start</button>
+      </div>
+      <p class="note" id="linknote">All pins start in the middle. Set each plate's start hole below, and its links with SAME / OPPOSITE above the lock. Once linked, moving a plate drags its linked plates too.</p>
+      <div class="plates" id="plates"></div>
+      <div>
+        <span class="label">Move log</span>
+        <ol class="log" id="log"></ol>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ════════════════════════════════════════════════════════════
+   PUZZLE LOGIC  (no 3D code in here — the solver will reuse it)
+   ════════════════════════════════════════════════════════════ */
+const MIN = 1, MAX = 7, TARGET = 4;
+
+// positions: array of pin holes, e.g. [2, 6, 3, 5]   (index 0 = plate 1)
+// links:     links[i] = list of { to: j, dir: +1 | -1 }
+//            one-way: moving plate i also moves plate j,
+//            dir +1 = same direction, -1 = opposite direction.
+// plate:     index of the plate the player moves
+// dir:       -1 = left (towards hole 1), +1 = right (towards hole 7)
+//
+// Returns the NEW positions array, or null if the move is blocked.
+// Rule: if ANY affected pin would leave 1..7, nothing moves.
+function tryMove(positions, links, plate, dir) {
+  const next = positions.slice();                       // work on a copy: a blocked move leaves the original untouched
+  const shifts = [{ to: plate, dir: 1 }, ...links[plate]]; // the plate itself, then each plate it drags
+  for (const s of shifts) {
+    next[s.to] += dir * s.dir;                           // same way: +dir, opposite: -dir
+    if (next[s.to] < MIN || next[s.to] > MAX) return null; // any pin past an edge → whole move blocked
+  }
+  return next;
+}
+
+/* ── Solver: breadth-first search over every reachable pin arrangement ──
+   Each arrangement is packed into one number (base 7), so "have I seen this?"
+   is a single array lookup. BFS explores 1 move away, then 2, then 3…, so the
+   first time it reaches all-middle it has found a SHORTEST solution.          */
+function solve(start, links) {
+  const n = start.length, total = 7 ** n;
+  const encode = ps => ps.reduce((acc, p) => acc * 7 + (p - MIN), 0);
+  const decode = code => { const ps = new Array(n); for (let i = n - 1; i >= 0; i--) { ps[i] = (code % 7) + MIN; code = Math.floor(code / 7); } return ps; };
+  const goal = encode(new Array(n).fill(TARGET)), from = encode(start);
+  if (from === goal) return [];
+  const prev = new Int32Array(total).fill(-1);   // which arrangement we came from
+  const how = new Int8Array(total);              // which move got us here (plate*2 + 0 left / 1 right)
+  const queue = new Int32Array(total);
+  let head = 0, tail = 0;
+  queue[tail++] = from; prev[from] = from;
+  while (head < tail) {
+    const code = queue[head++], ps = decode(code);
+    for (let plate = 0; plate < n; plate++) for (const dir of [-1, 1]) {
+      const nx = tryMove(ps, links, plate, dir);
+      if (!nx) continue;
+      const c = encode(nx);
+      if (prev[c] !== -1) continue;
+      prev[c] = code; how[c] = plate * 2 + (dir > 0 ? 1 : 0);
+      if (c === goal) {                           // walk back to the start to read off the moves
+        const steps = [];
+        for (let k = c; k !== from; k = prev[k]) steps.push({ plate: how[k] >> 1, dir: how[k] & 1 ? 1 : -1 });
+        return steps.reverse();
+      }
+      queue[tail++] = c;
+    }
+  }
+  return null;                                     // every reachable arrangement tried: no way to open it
+}
+
+function isSolved(positions) { return positions.every(p => p === TARGET); }
+
+/* ════════════════════════════════════════════════════════════
+   STATE  (example lock — replace with your chest's values)
+   ════════════════════════════════════════════════════════════ */
+const state = {
+  starts: [4, 4, 4, 4],
+  links: [[], [], [], []],   // start with no links: add your chest's with SAME / OPPOSITE
+  positions: [4, 4, 4, 4],
+  selected: 0,
+  moves: 0,
+  log: [],
+  addingFor: null,
+  solution: null,   // { steps: [...], done: n } while a solution is shown
+  linkMode: null,   // null = normal play, +1 = picking SAME links, -1 = picking OPPOSITE links
+};
+
+/* ════════════════════════════════════════════════════════════
+   3D SCENE
+   ════════════════════════════════════════════════════════════ */
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.shadowMap.enabled = true;
+stage.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+// Narrow field of view + far camera ≈ isometric look (little perspective distortion), like the game's close-up.
+const camera = new THREE.PerspectiveCamera(20, 1, 0.1, 200);
+
+scene.add(new THREE.HemisphereLight(0xcfd6e0, 0x1a120a, 0.45));
+const key = new THREE.DirectionalLight(0xffe2b8, 1.1);
+key.position.set(-4, 7, 6); key.castShadow = true;
+key.shadow.mapSize.set(1024, 1024);
+scene.add(key);
+const torch = new THREE.PointLight(0xff9a4a, 1.2, 18, 2);
+torch.position.set(4, 3, 3);
+scene.add(torch);
+const rim = new THREE.DirectionalLight(0x8fa6c8, 0.35);
+rim.position.set(5, 2, -8);
+scene.add(rim);
+
+const mat = {
+  iron:  new THREE.MeshStandardMaterial({ color: 0x7f8388, metalness: 0.6, roughness: 0.42 }),
+  face:  new THREE.MeshStandardMaterial({ color: 0x0b0d10, metalness: 0.2, roughness: 0.9 }),
+  hole:  new THREE.MeshStandardMaterial({ color: 0x050505, roughness: 1 }),
+  brass: new THREE.MeshStandardMaterial({ color: 0xd4ab5e, metalness: 0.7, roughness: 0.28, emissive: 0x000000 }),
+  slot:  new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.9 }),
+  ring:  new THREE.MeshStandardMaterial({ color: 0x8a6d38, metalness: 0.6, roughness: 0.4, emissive: 0x2a1a05 }),
+};
+
+const HOLE_GAP = 0.4, PLATE_GAP = 0.95;
+const holeX = p => (p - TARGET) * HOLE_GAP;
+
+function roundedRect(w, h, r) {
+  const s = new THREE.Shape(), x = -w / 2, y = -h / 2;
+  s.moveTo(x + r, y); s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+  s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+  s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+  return s;
+}
+const frameGeo = new THREE.ExtrudeGeometry(roundedRect(3.3, 2.3, 0.28), { depth: 0.12, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.02, bevelSegments: 2 });
+frameGeo.translate(0, 0, -0.06);
+const faceGeo = new THREE.ExtrudeGeometry(roundedRect(3.0, 2.0, 0.2), { depth: 0.17, bevelEnabled: false });
+faceGeo.translate(0, 0, -0.085);
+const railGeo = new THREE.BoxGeometry(3.1, 0.16, 0.26);
+const holeGeo = new THREE.CylinderGeometry(0.075, 0.075, 0.02, 20);
+const pinGeo = new THREE.CylinderGeometry(0.065, 0.07, 0.14, 20);
+const ringGeo = new THREE.TorusGeometry(0.1, 0.012, 8, 24);
+const hornGeo = new THREE.BoxGeometry(0.1, 0.22, 0.26);
+const slotGeo = new THREE.BoxGeometry(1.1, 0.14, 0.02);
+
+function labelSprite(text) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(14,12,10,0.85)'; g.beginPath(); g.arc(64, 64, 56, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#c9a45c'; g.lineWidth = 5; g.stroke();
+  g.fillStyle = '#e8e1d6'; g.font = '64px "IM Fell English SC", Georgia, serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 64, 70);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+  s.scale.set(0.34, 0.34, 1);
+  return s;
+}
+
+let plates = [];     // { group, rail, frame, pin, pinX, shake, flash }
+let lockBody = null;
+
+// Selection marker: a white arrow floating over the selected plate's number.
+// Selection is shown by this marker + lifting the plate, never by rail colour,
+// so the rail colours can mean one thing only: links.
+const marker = new THREE.Mesh(
+  new THREE.ConeGeometry(0.13, 0.26, 4),
+  new THREE.MeshStandardMaterial({ color: 0xf4efe6, emissive: 0x6a6660, roughness: 0.5 }));
+marker.rotation.x = Math.PI;   // point down
+scene.add(marker);
+const LINK_SAME = 0x1d6416, LINK_OPP = 0x7a1a0e;
+const LIFT = 0.1;
+// Selection tint: a soft, see-through glow box around the whole selected plate.
+// Neutral warm white so it never reads as a link colour (green/red).
+const TINT_COLOR = 0xfff1d0, TINT_OPACITY = 0.13;
+// Sized to the plate itself: frame edges left/right/bottom, top = rail surface where the pin sits.
+const tintGeo = new THREE.BoxGeometry(3.38, 2.51, 0.3);
+
+function buildScene() {
+  plates.forEach(p => scene.remove(p.group));
+  if (lockBody) scene.remove(lockBody);
+  plates = [];
+  const n = state.positions.length;
+  for (let i = 0; i < n; i++) {
+    const g = new THREE.Group();
+    g.position.set(i * 0.12, 0, -i * PLATE_GAP);
+    const frame = new THREE.Mesh(frameGeo, mat.iron.clone());
+    const face = new THREE.Mesh(faceGeo, mat.face);
+    const slot = new THREE.Mesh(slotGeo, mat.slot); slot.position.set(-0.1, -0.15, 0.09);
+    const rail = new THREE.Mesh(railGeo, mat.iron.clone()); rail.position.y = 1.23;
+    [frame, face, rail].forEach(m => { m.castShadow = m.receiveShadow = true; });
+    g.add(frame, face, slot, rail);
+    for (const hx of [-1.62, -1.46]) { const h = new THREE.Mesh(hornGeo, mat.iron); h.position.set(hx, 1.4, 0); g.add(h); }
+    for (let p = MIN; p <= MAX; p++) {
+      const h = new THREE.Mesh(holeGeo, mat.hole); h.position.set(holeX(p), 1.315, 0); g.add(h);
+    }
+    const ring = new THREE.Mesh(ringGeo, mat.ring); ring.rotation.x = Math.PI / 2; ring.position.set(0, 1.318, 0); g.add(ring);
+    const pin = new THREE.Mesh(pinGeo, mat.brass.clone()); pin.castShadow = true;
+    const x = holeX(state.positions[i]);
+    pin.position.set(x, 1.38, 0); g.add(pin);
+    const tint = new THREE.Mesh(tintGeo, new THREE.MeshBasicMaterial({
+      color: TINT_COLOR, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    tint.position.y = 0.065; tint.renderOrder = 10; g.add(tint);
+    const lbl = labelSprite(String(i + 1)); lbl.position.set(-1.95, 1.3, 0); g.add(lbl);
+    g.traverse(o => { o.userData.plate = i; });
+    scene.add(g);
+    plates.push({ group: g, rail, frame, pin, lbl, tint, pinX: x, baseX: g.position.x, shake: 0, flash: 0 });
+  }
+  resetCamera();
+}
+
+/* ── orbit camera (drag to rotate, wheel/pinch to zoom) ── */
+// Isometric start: 30° round to the front-right, ~35° from above: front plate bottom-left, stack receding to the upper right, as in the game.
+const orbit = { yaw: Math.PI / 6, pitch: 0.6, dist: 18, target: new THREE.Vector3() };
+function resetCamera() {
+  const n = state.positions.length;
+  orbit.target.set(n * 0.06, 0.45, -(n - 1) * PLATE_GAP / 2);
+  orbit.dist = 15 + n * 1.1;
+  placeCamera();
+}
+function placeCamera() {
+  const { yaw, pitch, target } = orbit;
+  // Narrow (portrait) screens: step back so the whole lock still fits the width.
+  const dist = orbit.dist * Math.max(1, 1.45 / (camera.aspect || 1.45));
+  camera.position.set(
+    target.x + dist * Math.sin(yaw) * Math.cos(pitch),
+    target.y + dist * Math.sin(pitch),
+    target.z + dist * Math.cos(yaw) * Math.cos(pitch));
+  camera.lookAt(target);
+}
+
+const pointers = new Map();
+let dragMoved = 0, pinchStart = null;
+stage.addEventListener('pointerdown', e => {
+  if (e.target.closest('button, .solution')) return;
+  stage.focus({ preventScroll: true });
+  stage.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  dragMoved = 0; stage.classList.add('dragging');
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchStart = { d: Math.hypot(a.x - b.x, a.y - b.y), dist: orbit.dist }; }
+});
+stage.addEventListener('pointermove', e => {
+  const prev = pointers.get(e.pointerId); if (!prev) return;
+  const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2 && pinchStart) {
+    const [a, b] = [...pointers.values()];
+    orbit.dist = THREE.MathUtils.clamp(pinchStart.dist * pinchStart.d / Math.hypot(a.x - b.x, a.y - b.y), 8, 40);
+  } else {
+    dragMoved += Math.abs(dx) + Math.abs(dy);
+    orbit.yaw -= dx * 0.006;
+    orbit.pitch = THREE.MathUtils.clamp(orbit.pitch + dy * 0.005, 0.05, 1.35);
+  }
+  placeCamera();
+});
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinchStart = null;
+  stage.classList.remove('dragging');
+  if (dragMoved < 5 && pointers.size === 0) pick(e);
+}
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', e => { pointers.delete(e.pointerId); stage.classList.remove('dragging'); });
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  orbit.dist = THREE.MathUtils.clamp(orbit.dist * (1 + Math.sign(e.deltaY) * 0.08), 8, 40);
+  placeCamera();
+}, { passive: false });
+
+const ray = new THREE.Raycaster();
+function pick(e) {
+  const r = stage.getBoundingClientRect();
+  const v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(v, camera);
+  const hit = ray.intersectObjects(plates.map(p => p.group), true)[0];
+  if (hit && hit.object.userData.plate !== undefined) plateClicked(hit.object.userData.plate);
+}
+
+function resize() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+  placeCamera();
+}
+new ResizeObserver(resize).observe(stage);
+
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function paintHighlights() {
+  const sel = state.selected, targets = new Map((state.links[sel] || []).map(l => [l.to, l.dir]));
+  plates.forEach((p, i) => {
+    const e = targets.has(i) ? (targets.get(i) > 0 ? LINK_SAME : LINK_OPP) : 0x000000;
+    p.rail.material.emissive.setHex(e);
+    p.lbl.scale.setScalar(i === sel ? 0.46 : 0.34);
+    p.pin.material.emissive.setHex(isSolved(state.positions) ? 0x3a5a20 : 0x000000);
+  });
+}
+function animate() {
+  requestAnimationFrame(animate);
+  const k = reduceMotion ? 1 : 0.22;
+  plates.forEach((p, i) => {
+    const tx = holeX(state.positions[i]);
+    p.pinX += (tx - p.pinX) * k;
+    p.pin.position.x = p.pinX;
+    const to = i === state.selected ? TINT_OPACITY : 0;
+    p.tint.material.opacity += (to - p.tint.material.opacity) * k;
+    p.tint.visible = p.tint.material.opacity > 0.003;
+    const ty = i === state.selected ? LIFT : 0;
+    p.group.position.y += (ty - p.group.position.y) * k;
+    if (p.shake > 0) { p.shake = Math.max(0, p.shake - 0.05); p.group.position.x = p.baseX + Math.sin(p.shake * 40) * 0.05 * p.shake; }
+    if (p.flash > 0) { p.flash = Math.max(0, p.flash - 0.03); p.frame.material.emissive.setRGB(0.55 * p.flash, 0.08 * p.flash, 0.04 * p.flash); }
+  });
+  const s = plates[state.selected];
+  if (s) {
+    const bob = reduceMotion ? 0 : Math.sin(performance.now() / 300) * 0.05;
+    const tx = s.group.position.x - 1.95, tyM = s.group.position.y + 1.82 + bob, tz = s.group.position.z;
+    marker.position.x += (tx - marker.position.x) * k;
+    marker.position.y += (tyM - marker.position.y) * k;
+    marker.position.z += (tz - marker.position.z) * k;
+  }
+  renderer.render(scene, camera);
+}
+
+/* ════════════════════════════════════════════════════════════
+   UI
+   ════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+
+function select(i) {
+  state.selected = i;
+  state.addingFor = state.addingFor === i ? i : null;
+  render();
+}
+
+// A plate click selects it in normal play; in link mode it toggles a link from the selected plate.
+function plateClicked(i) {
+  if (!state.linkMode) return select(i);
+  const src = state.selected;
+  if (i === src) { state.linkMode = null; return render(); }   // clicking the source finishes
+  clearSolution();
+  const ls = state.links[src], k = ls.findIndex(l => l.to === i);
+  if (k < 0) ls.push({ to: i, dir: state.linkMode });           // new link
+  else if (ls[k].dir === state.linkMode) ls.splice(k, 1);       // same kind again → remove
+  else ls[k].dir = state.linkMode;                              // other kind → flip it
+  render();
+}
+
+function setLinkMode(dir) {
+  state.linkMode = state.linkMode === dir ? null : dir;
+  state.addingFor = null;
+  render();
+}
+
+function move(dir, fromSolution = false) {
+  if (!fromSolution) clearSolution();
+  const i = state.selected;
+  const next = tryMove(state.positions, state.links, i, dir);
+  const word = dir < 0 ? 'left' : 'right';
+  if (!next) {
+    const p = plates[i]; if (p) { p.flash = 1; p.shake = reduceMotion ? 0 : 1; }
+    state.log.push({ text: `Plate ${i + 1} ${word}: blocked`, blocked: true });
+  } else {
+    state.positions = next; state.moves++;
+    state.log.push({ text: `Plate ${i + 1} ${word}` });
+  }
+  render();
+}
+
+function resetToStart() {
+  clearSolution();
+  state.positions = state.starts.slice(); state.moves = 0; state.log = [];
+  plates.forEach((p, i) => { p.pinX = holeX(state.positions[i]); });
+  render();
+}
+
+function setCount(n) {
+  clearSolution();
+  n = Math.max(2, Math.min(8, n));
+  while (state.starts.length < n) { state.starts.push(TARGET); state.links.push([]); }
+  state.starts.length = n; state.links.length = n;
+  state.links = state.links.map(ls => ls.filter(l => l.to < n));
+  state.selected = Math.min(state.selected, n - 1);
+  state.positions = state.starts.slice(); state.moves = 0; state.log = [];
+  buildScene(); render();
+}
+
+function render() {
+  const n = state.positions.length;
+  const centred = state.positions.filter(p => p === TARGET).length;
+  $('count').value = n; $('count').textContent = n;
+  $('centered').textContent = `${centred} / ${n} centred`;
+  $('moves').textContent = `${state.moves} move${state.moves === 1 ? '' : 's'}`;
+  const solved = isSolved(state.positions);
+  $('lockstate').textContent = solved ? 'Unlocked' : 'Locked';
+  $('lockstate').className = 'pill ' + (solved ? 'open' : 'locked');
+  $('nudgebar').hidden = false;
+  $('hudWho').textContent = `Plate ${state.selected + 1}`;
+  const src = state.selected + 1;
+  $('linkSrc').textContent = `Plate ${src}`;
+  $('modeSame').setAttribute('aria-pressed', state.linkMode === 1);
+  $('modeOpp').setAttribute('aria-pressed', state.linkMode === -1);
+  stage.classList.toggle('linking', !!state.linkMode);
+  $('modehint').innerHTML = state.linkMode
+    ? `Click the plates that <strong>plate ${src}</strong> drags <strong>${state.linkMode > 0 ? 'the same way' : 'the opposite way'}</strong>. Click one again to remove it. Click plate ${src}, press Esc, or tap ${state.linkMode > 0 ? 'SAME' : 'OPPOSITE'} again when done.`
+    : `Select a plate, then press SAME or OPPOSITE and click the plates it drags.`;
+  $('hint').textContent = state.linkMode ? `Linking from plate ${src}`
+    : !document.hasFocus() ? 'Click the lock once to use the arrow keys'
+    : '↑ ↓ pick plate · ← → slide · drag to orbit';
+
+  const box = $('plates'); box.innerHTML = '';
+  state.positions.forEach((pos, i) => {
+    const el = document.createElement('div');
+    el.className = 'plate' + (i === state.selected ? ' sel' : '');
+    const pips = Array.from({ length: MAX }, (_, k) =>
+      `<span class="pip${k + 1 === TARGET ? ' mid' : ''}${k + 1 === pos ? ' on' : ''}"></span>`).join('');
+    const chips = state.links[i].map((l, li) =>
+      `<span class="chip ${l.dir > 0 ? 'same' : 'opp'}">drags ${l.to + 1} ${l.dir > 0 ? 'same way' : 'opposite'}<button data-unlink="${li}" aria-label="Remove link">×</button></span>`).join('');
+    const others = [...Array(n).keys()].filter(j => j !== i && !state.links[i].some(l => l.to === j));
+    const form = state.addingFor === i && others.length ? `
+      <div class="linkform">
+        <span>Moving ${i + 1} drags</span>
+        <select id="lt-${i}">${others.map(j => `<option value="${j}">plate ${j + 1}</option>`).join('')}</select>
+        <select id="ld-${i}"><option value="1">same way</option><option value="-1">opposite</option></select>
+        <button data-addlink>Add</button><button class="ghost" data-cancel>Cancel</button>
+      </div>` : '';
+    el.innerHTML = `
+      <div class="plate-head">
+        <span class="badge" data-select role="button" tabindex="0" aria-label="Select plate ${i + 1}">${i + 1}</span>
+        <div class="pips" aria-label="Pin in hole ${pos} of 7">${pips}</div>
+        <button class="arrow" data-move="-1" aria-label="Move plate ${i + 1} left">◀</button>
+        <button class="arrow" data-move="1" aria-label="Move plate ${i + 1} right">▶</button>
+      </div>
+      <div class="plate-setup">
+        <label>Start hole <select id="start-${i}">${Array.from({ length: MAX }, (_, k) => `<option${k + 1 === state.starts[i] ? ' selected' : ''}>${k + 1}</option>`).join('')}</select></label>
+        ${chips}
+        ${others.length && state.addingFor !== i ? '<button class="ghost" data-startlink>+ link</button>' : ''}
+      </div>${form}`;
+    el.querySelector('[data-select]').addEventListener('click', () => plateClicked(i));
+    el.querySelector('[data-select]').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); plateClicked(i); } });
+    el.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => { state.selected = i; move(+b.dataset.move); }));
+    el.querySelector(`#start-${i}`).addEventListener('change', e => { state.starts[i] = +e.target.value; resetToStart(); });
+    el.querySelectorAll('[data-unlink]').forEach(b => b.addEventListener('click', () => { state.links[i].splice(+b.dataset.unlink, 1); clearSolution(); render(); }));
+    const sl = el.querySelector('[data-startlink]'); if (sl) sl.addEventListener('click', () => { state.selected = i; state.addingFor = i; render(); });
+    const al = el.querySelector('[data-addlink]'); if (al) al.addEventListener('click', () => {
+      state.links[i].push({ to: +el.querySelector(`#lt-${i}`).value, dir: +el.querySelector(`#ld-${i}`).value });
+      state.addingFor = null; clearSolution(); render();
+    });
+    const cl = el.querySelector('[data-cancel]'); if (cl) cl.addEventListener('click', () => { state.addingFor = null; render(); });
+    box.appendChild(el);
+  });
+
+  $('log').innerHTML = state.log.slice(-40).map(l => `<li class="${l.blocked ? 'blocked' : ''}">${l.text}</li>`).join('');
+  $('log').scrollTop = 1e6;
+  paintHighlights();
+  renderSolution();
+}
+
+$('reset').addEventListener('click', resetToStart);
+
+/* ── Solve button ── */
+let playTimer = null;
+function clearSolution() {
+  clearInterval(playTimer); playTimer = null;
+  state.solution = null;
+}
+function renderSolution() {
+  const box = $('solution'), sol = state.solution;
+  box.hidden = !sol;
+  if (!sol) return;
+  const list = $('solSteps'), acts = $('solActions');
+  if (sol.steps === null) {
+    $('solTitle').textContent = 'No solution';
+    list.innerHTML = '<p class="sol-msg">No sequence of moves opens this lock from here. Check the start holes and links against the chest.</p>';
+    acts.hidden = true; return;
+  }
+  const total = sol.steps.length, finished = sol.done >= total;
+  $('solTitle').textContent = total === 0 ? 'Already open' : finished ? `Opened in ${total} move${total === 1 ? '' : 's'}` : `Solution · ${total} move${total === 1 ? '' : 's'}`;
+  list.innerHTML = total === 0 ? '<p class="sol-msg">Every pin is already in the middle.</p>' :
+    sol.steps.map((st, k) => `<li class="${k < sol.done ? 'done' : k === sol.done ? 'next' : ''}">Plate ${st.plate + 1} ${st.dir < 0 ? '← left' : 'right →'}</li>`).join('');
+  acts.hidden = finished || total === 0;
+  const nextLi = list.querySelector('.next'); if (nextLi) nextLi.scrollIntoView({ block: 'nearest' });
+}
+function stepSolution() {
+  const sol = state.solution; if (!sol || !sol.steps || sol.done >= sol.steps.length) return false;
+  const st = sol.steps[sol.done];
+  state.selected = st.plate;
+  sol.done++;
+  move(st.dir, true);
+  if (sol.done < sol.steps.length) { state.selected = sol.steps[sol.done].plate; render(); }  // point the marker at the next plate
+  return sol.done < sol.steps.length;
+}
+$('solveBtn').addEventListener('click', () => {
+  clearSolution(); state.linkMode = null;
+  const btn = $('solveBtn'); btn.textContent = 'Solving…'; btn.disabled = true;
+  setTimeout(() => {                                   // let "Solving…" paint before the search runs
+    const steps = solve(state.positions, state.links);
+    state.solution = { steps, done: 0 };
+    if (steps && steps.length) state.selected = steps[0].plate;
+    btn.textContent = 'Solve'; btn.disabled = false;
+    render();
+  }, 30);
+});
+$('solNext').addEventListener('click', () => { clearInterval(playTimer); playTimer = null; stepSolution(); });
+$('solAll').addEventListener('click', () => {
+  clearInterval(playTimer);
+  playTimer = setInterval(() => { if (!stepSolution()) { clearInterval(playTimer); playTimer = null; } }, reduceMotion ? 150 : 450);
+});
+$('solClose').addEventListener('click', () => { clearSolution(); render(); });
+$('fewer').addEventListener('click', () => setCount(state.positions.length - 1));
+$('more').addEventListener('click', () => setCount(state.positions.length + 1));
+$('modeSame').addEventListener('click', () => setLinkMode(1));
+$('modeOpp').addEventListener('click', () => setLinkMode(-1));
+$('hudLeft').addEventListener('click', () => move(-1));
+$('hudRight').addEventListener('click', () => move(1));
+document.addEventListener('keydown', e => {
+  if (e.target.closest('select, input, textarea')) return;
+  if (e.key === 'Escape' && state.linkMode) { state.linkMode = null; render(); }
+  // Up/Down walk through the plates. Up = towards the back (higher numbers), matching the 3D view.
+  // Stops at the first/last plate rather than wrapping around.
+  else if (e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); select(Math.min(state.selected + 1, state.positions.length - 1)); }
+  else if (e.key === 'ArrowDown' || e.key === 's') { e.preventDefault(); select(Math.max(state.selected - 1, 0)); }
+  else if (e.key === 'ArrowLeft' || e.key === 'a') { e.preventDefault(); move(-1); }
+  else if (e.key === 'ArrowRight' || e.key === 'd') { e.preventDefault(); move(1); }
+  else if (/^[1-8]$/.test(e.key) && +e.key <= state.positions.length) select(+e.key - 1);
+});
+
+buildScene();
+// Start ready for the keyboard: plate 1 (front) selected, focus on the lock.
+// Browsers only let an embedded page take keyboard focus after a click, so if
+// focus isn't granted the hint asks for one click and updates when it arrives.
+state.selected = 0;
+marker.position.set(plates[0].group.position.x - 1.95, 1.82, plates[0].group.position.z);   // no fly-in on load
+try { window.focus(); stage.focus({ preventScroll: true }); } catch (e) {}
+window.addEventListener('focus', () => render());
+window.addEventListener('blur', () => render());
+resize();
+render();
+animate();
+</script>
+</body>
+</html>
