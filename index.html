@@ -74,7 +74,7 @@
   .solvebtn { margin-left: auto; font-size: 15px; padding: 7px 22px; letter-spacing: .06em; }
   .solution {
     position: absolute; top: 12px; right: 12px; z-index: 2; width: min(220px, calc(100% - 24px));
-    max-height: calc(100% - 84px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 8px;
+    max-height: calc(100% - 84px); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; gap: 8px;
     background: rgba(20,17,14,.94); border: 1px solid var(--brass-dim); border-radius: 10px; padding: 12px;
   }
   .sol-head { display: flex; justify-content: space-between; align-items: center; }
@@ -87,6 +87,8 @@
   .sol-steps .times { font-weight: 700; color: var(--brass); }
   .sol-steps li.done .times { color: inherit; }
   .sol-steps .togo { font-weight: 400; color: var(--muted); font-size: 13px; }
+  .sol-note { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .sol-note strong { color: var(--text); }
   .sol-msg { margin: 0; color: var(--muted); font-size: 14px; }
   .sol-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .stage canvas { display: block; width: 100%; height: 100%; }
@@ -97,8 +99,18 @@
   }
   .hud > * { pointer-events: auto; }
   .hint { color: var(--muted); font-size: 13px; background: rgba(14,12,10,.7); padding: 4px 10px; border-radius: 6px; }
-  .nudgebar { display: flex; gap: 6px; align-items: center; background: rgba(14,12,10,.8); padding: 6px; border-radius: 8px; border: 1px solid var(--line); }
-  .nudgebar .who { font-family: var(--display); font-size: 17px; padding: 0 8px; color: var(--brass); }
+  /* d-pad: ▲ ▼ pick a plate, ◀ ▶ slide it — thumb-friendly on phones */
+  .nudgebar {
+    display: grid; grid-template-columns: 44px auto 44px; grid-template-areas: ". up ." "left who right" ". down .";
+    gap: 4px; align-items: center; justify-items: center;
+    background: rgba(14,12,10,.8); padding: 6px; border-radius: 10px; border: 1px solid var(--line);
+  }
+  .nudgebar .arrow { width: 44px; height: 38px; padding: 0; }
+  .nudgebar .up { grid-area: up; } .nudgebar .down { grid-area: down; }
+  .nudgebar .left { grid-area: left; } .nudgebar .right { grid-area: right; }
+  .nudgebar .who { grid-area: who; font-family: var(--display); font-size: 17px; padding: 0 8px; color: var(--brass); white-space: nowrap; }
+  .hud { align-items: flex-end; }
+  @media (pointer: coarse) { .hint { display: none; } }   /* touch screens: keyboard tips don't apply */
 
   button, select {
     font: inherit; color: var(--text); background: var(--panel-2);
@@ -185,6 +197,7 @@
     <div class="stage" id="stage" tabindex="0" aria-label="3D lock. Click a plate to select it; arrow keys move it.">
       <div class="solution" id="solution" hidden>
         <div class="sol-head"><strong id="solTitle">Solution</strong><button class="ghost sol-x" id="solClose" aria-label="Close solution">×</button></div>
+        <p class="sol-note">Arrows show which way to slide the <strong>plate</strong>, as in the game.</p>
         <ol class="sol-steps" id="solSteps"></ol>
         <div class="sol-actions" id="solActions">
           <button class="primary" id="solNext">Do next step</button>
@@ -194,9 +207,11 @@
       <div class="hud">
         <span class="hint" id="hint">Drag to orbit · scroll to zoom</span>
         <div class="nudgebar" id="nudgebar" hidden>
-          <button class="arrow" id="hudLeft" aria-label="Move selected plate left">◀</button>
+          <button class="arrow up" id="hudUp" aria-label="Select the plate behind">▲</button>
+          <button class="arrow left" id="hudLeft" aria-label="Move selected plate left">◀</button>
           <span class="who" id="hudWho">Plate 1</span>
-          <button class="arrow" id="hudRight" aria-label="Move selected plate right">▶</button>
+          <button class="arrow right" id="hudRight" aria-label="Move selected plate right">▶</button>
+          <button class="arrow down" id="hudDown" aria-label="Select the plate in front">▼</button>
         </div>
       </div>
     </div>
@@ -714,7 +729,10 @@ function renderSolution() {
       const doneHere = Math.min(Math.max(sol.done - g.from, 0), g.count);
       const cls = doneHere === g.count ? 'done' : sol.done >= g.from ? 'next' : '';
       const togo = cls === 'next' && doneHere > 0 ? ` <span class="togo">(${g.count - doneHere} to go)</span>` : '';
-      return `<li class="${cls}">Plate ${g.plate + 1} ${g.dir < 0 ? '← left' : 'right →'}${g.count > 1 ? ` <span class="times">×${g.count}</span>` : ''}${togo}</li>`;
+      // In the game you slide the plate, and the pin moves the other way along it,
+      // so the instruction shows the plate direction: the opposite of the pin's.
+      const plateDir = -g.dir;
+      return `<li class="${cls}">Plate ${g.plate + 1} ${plateDir < 0 ? '← left' : 'right →'}${g.count > 1 ? ` <span class="times">×${g.count}</span>` : ''}${togo}</li>`;
     }).join('');
   acts.hidden = finished || total === 0;
   const nextLi = list.querySelector('.next'); if (nextLi) nextLi.scrollIntoView({ block: 'nearest' });
@@ -760,6 +778,10 @@ $('fewer').addEventListener('click', () => setCount(state.positions.length - 1))
 $('more').addEventListener('click', () => setCount(state.positions.length + 1));
 $('modeSame').addEventListener('click', () => setLinkMode(1));
 $('modeOpp').addEventListener('click', () => setLinkMode(-1));
+// ▲ = plate behind (higher number), ▼ = plate in front; stops at the ends.
+function selectRel(delta) { select(Math.max(0, Math.min(state.selected + delta, state.positions.length - 1))); }
+$('hudUp').addEventListener('click', () => selectRel(1));
+$('hudDown').addEventListener('click', () => selectRel(-1));
 $('hudLeft').addEventListener('click', () => move(-1));
 $('hudRight').addEventListener('click', () => move(1));
 document.addEventListener('keydown', e => {
@@ -767,8 +789,8 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && state.linkMode) { state.linkMode = null; render(); }
   // Up/Down walk through the plates. Up = towards the back (higher numbers), matching the 3D view.
   // Stops at the first/last plate rather than wrapping around.
-  else if (e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); select(Math.min(state.selected + 1, state.positions.length - 1)); }
-  else if (e.key === 'ArrowDown' || e.key === 's') { e.preventDefault(); select(Math.max(state.selected - 1, 0)); }
+  else if (e.key === 'ArrowUp' || e.key === 'w') { e.preventDefault(); selectRel(1); }
+  else if (e.key === 'ArrowDown' || e.key === 's') { e.preventDefault(); selectRel(-1); }
   else if (e.key === 'ArrowLeft' || e.key === 'a') { e.preventDefault(); move(-1); }
   else if (e.key === 'ArrowRight' || e.key === 'd') { e.preventDefault(); move(1); }
   else if (/^[1-8]$/.test(e.key) && +e.key <= state.positions.length) select(+e.key - 1);
