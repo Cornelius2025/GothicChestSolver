@@ -84,6 +84,9 @@
   .sol-steps li { padding: 1px 0; color: var(--text); font-size: 14px; }
   .sol-steps li.done { color: var(--muted); text-decoration: line-through; }
   .sol-steps li.next { color: var(--brass); font-weight: 700; }
+  .sol-steps .times { font-weight: 700; color: var(--brass); }
+  .sol-steps li.done .times { color: inherit; }
+  .sol-steps .togo { font-weight: 400; color: var(--muted); font-size: 13px; }
   .sol-msg { margin: 0; color: var(--muted); font-size: 14px; }
   .sol-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .stage canvas { display: block; width: 100%; height: 100%; }
@@ -272,6 +275,34 @@ function solve(start, links) {
     }
   }
   return null;                                     // every reachable arrangement tried: no way to open it
+}
+
+/* Reorder a solution so moves of the same plate sit next to each other where
+   that's allowed. Every move is re-checked with tryMove, so the new order is
+   always legal, and it has the same number of moves, so it's still shortest. */
+function groupFriendly(start, links, steps) {
+  const left = steps.slice(), out = [];
+  let ps = start;
+  while (left.length) {
+    const last = out[out.length - 1];
+    let k = last ? left.findIndex(m => m.plate === last.plate && m.dir === last.dir && tryMove(ps, links, m.plate, m.dir)) : -1;
+    if (k < 0) k = left.findIndex(m => tryMove(ps, links, m.plate, m.dir));
+    if (k < 0) return steps;                       // can't reorder safely: keep the original
+    const m = left.splice(k, 1)[0];
+    ps = tryMove(ps, links, m.plate, m.dir); out.push(m);
+  }
+  return out;
+}
+
+// Merge runs of the same move: [P2→, P2→, P2→] becomes { plate: 1, dir: 1, count: 3, from: 0 }
+function groupSteps(steps) {
+  const groups = [];
+  steps.forEach((m, i) => {
+    const g = groups[groups.length - 1];
+    if (g && g.plate === m.plate && g.dir === m.dir) g.count++;
+    else groups.push({ plate: m.plate, dir: m.dir, count: 1, from: i });
+  });
+  return groups;
 }
 
 function isSolved(positions) { return positions.every(p => p === TARGET); }
@@ -679,7 +710,12 @@ function renderSolution() {
   const total = sol.steps.length, finished = sol.done >= total;
   $('solTitle').textContent = total === 0 ? 'Already open' : finished ? `Opened in ${total} move${total === 1 ? '' : 's'}` : `Solution · ${total} move${total === 1 ? '' : 's'}`;
   list.innerHTML = total === 0 ? '<p class="sol-msg">Every pin is already in the middle.</p>' :
-    sol.steps.map((st, k) => `<li class="${k < sol.done ? 'done' : k === sol.done ? 'next' : ''}">Plate ${st.plate + 1} ${st.dir < 0 ? '← left' : 'right →'}</li>`).join('');
+    groupSteps(sol.steps).map(g => {
+      const doneHere = Math.min(Math.max(sol.done - g.from, 0), g.count);
+      const cls = doneHere === g.count ? 'done' : sol.done >= g.from ? 'next' : '';
+      const togo = cls === 'next' && doneHere > 0 ? ` <span class="togo">(${g.count - doneHere} to go)</span>` : '';
+      return `<li class="${cls}">Plate ${g.plate + 1} ${g.dir < 0 ? '← left' : 'right →'}${g.count > 1 ? ` <span class="times">×${g.count}</span>` : ''}${togo}</li>`;
+    }).join('');
   acts.hidden = finished || total === 0;
   const nextLi = list.querySelector('.next'); if (nextLi) nextLi.scrollIntoView({ block: 'nearest' });
 }
@@ -696,14 +732,25 @@ $('solveBtn').addEventListener('click', () => {
   clearSolution(); state.linkMode = null;
   const btn = $('solveBtn'); btn.textContent = 'Solving…'; btn.disabled = true;
   setTimeout(() => {                                   // let "Solving…" paint before the search runs
-    const steps = solve(state.positions, state.links);
+    const raw = solve(state.positions, state.links);
+    const steps = raw && groupFriendly(state.positions, state.links, raw);
     state.solution = { steps, done: 0 };
     if (steps && steps.length) state.selected = steps[0].plate;
     btn.textContent = 'Solve'; btn.disabled = false;
     render();
   }, 30);
 });
-$('solNext').addEventListener('click', () => { clearInterval(playTimer); playTimer = null; stepSolution(); });
+// "Do next step" plays the whole current group (e.g. all of "Plate 2 right ×4"), one move at a time.
+$('solNext').addEventListener('click', () => {
+  clearInterval(playTimer); playTimer = null;
+  const sol = state.solution; if (!sol || !sol.steps) return;
+  const g = groupSteps(sol.steps).find(g => sol.done < g.from + g.count); if (!g) return;
+  const end = g.from + g.count;
+  if (!stepSolution() || sol.done >= end) return;
+  playTimer = setInterval(() => {
+    if (!stepSolution() || sol.done >= end) { clearInterval(playTimer); playTimer = null; }
+  }, reduceMotion ? 80 : 220);
+});
 $('solAll').addEventListener('click', () => {
   clearInterval(playTimer);
   playTimer = setInterval(() => { if (!stepSolution()) { clearInterval(playTimer); playTimer = null; } }, reduceMotion ? 150 : 450);
